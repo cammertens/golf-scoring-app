@@ -689,10 +689,11 @@ let activeTeeTimeToken = null;
 async function loadScoreViewList() {
   if (scoreMatch) return;
 
-  // Always fetch fresh tee times
+  // Always fetch fresh tee times — parse day as int to avoid "1" vs 1 key mismatch
   for (const day of [1, 2]) {
     const res = await fetch(`/api/tee-times/${day}`);
-    teeTimes[day] = await res.json();
+    const data = await res.json();
+    teeTimes[day] = data.map(tt => ({ ...tt, day: parseInt(tt.day) }));
   }
 
   // Clear stale token so we default to first tee time
@@ -762,7 +763,8 @@ function openScoringLink(token) {
 async function loadTeeTimes() {
   for (const day of [1, 2]) {
     const res = await fetch(`/api/tee-times/${day}`);
-    teeTimes[day] = await res.json();
+    const data = await res.json();
+    teeTimes[day] = data.map(tt => ({ ...tt, day: parseInt(tt.day) }));
   }
 }
 
