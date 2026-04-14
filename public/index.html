@@ -689,27 +689,33 @@ let activeTeeTimeToken = null;
 async function loadScoreViewList() {
   if (scoreMatch) return;
 
-  // Load all tee times for both days
+  // Always fetch fresh tee times
   for (const day of [1, 2]) {
     const res = await fetch(`/api/tee-times/${day}`);
     teeTimes[day] = await res.json();
   }
 
+  // Clear stale token so we default to first tee time
+  activeTeeTimeToken = null;
+  scoringState = null;
+
   // Show the day toggle
   document.getElementById('score-day-toggle').style.display = 'block';
 
-  renderScoreTabs();
+  await renderScoreTabs();
 }
 
 function setScoreDay(day) {
   scoreDay = day;
   activeTeeTimeToken = null;
+  scoringState = null;
   document.getElementById('score-day-1').classList.toggle('active', day === 1);
   document.getElementById('score-day-2').classList.toggle('active', day === 2);
   renderScoreTabs();
 }
 
-function renderScoreTabs() {
+async function renderScoreTabs() {
+  // Always use freshly fetched tee times
   const tts = teeTimes[scoreDay] || [];
   const tabsEl = document.getElementById('score-tt-tabs');
   tabsEl.innerHTML = '';
@@ -719,10 +725,12 @@ function renderScoreTabs() {
     return;
   }
 
-  // Default to first tee time if none selected
-  if (!activeTeeTimeToken) activeTeeTimeToken = tts[0].unique_token;
+  // Default to first tee time
+  if (!activeTeeTimeToken || !tts.find(t => t.unique_token === activeTeeTimeToken)) {
+    activeTeeTimeToken = tts[0].unique_token;
+  }
 
-  tts.forEach(tt => {
+  tts.forEach((tt, idx) => {
     const btn = document.createElement('button');
     const isActive = tt.unique_token === activeTeeTimeToken;
     btn.style.cssText = `
@@ -733,17 +741,17 @@ function renderScoreTabs() {
       color:${isActive ? 'white' : 'var(--light)'};
     `;
     const playerFirstNames = tt.players.map(p => p.name.split(' ')[0]).join(', ') || 'Empty';
-    btn.textContent = `TT${tts.indexOf(tt) + 1}: ${playerFirstNames}`;
+    btn.textContent = `TT${idx + 1}: ${playerFirstNames}`;
     btn.addEventListener('click', () => {
       activeTeeTimeToken = tt.unique_token;
+      scoringState = null;
       renderScoreTabs();
-      loadScoringView(tt.unique_token);
     });
     tabsEl.appendChild(btn);
   });
 
   // Load active tee time scoring view
-  loadScoringView(activeTeeTimeToken);
+  await loadScoringView(activeTeeTimeToken);
 }
 
 function openScoringLink(token) {
@@ -1094,7 +1102,7 @@ async function loadAdminView() {
       `;
     });
 
-    html += `<button class="btn-secondary" style="margin-top:8px;" onclick="createTeeTimes(${adminDay})">↺ Reset Tee Times</button>`;
+    html += `<button class="btn-secondary" style="margin-top:8px;border-color:var(--red);color:var(--red);" onclick="confirmReset(${adminDay})">↺ Reset Day ${adminDay} Tee Times & Scores</button>`;
   }
 
   el.innerHTML = html;
@@ -1105,6 +1113,12 @@ function setAdminDay(day) {
   loadAdminView();
 }
 
+function confirmReset(day) {
+  const courseName = day === 1 ? 'Scarecrow' : 'Gamble Sands';
+  if (!confirm(`Reset Day ${day} (${courseName})?\n\nThis will delete all Day ${day} tee time assignments AND all Day ${day} scores. Day ${day === 1 ? 2 : 1} is unaffected.`)) return;
+  createTeeTimes(day);
+}
+
 async function createTeeTimes(day) {
   const res = await fetch('/api/tee-times', {
     method: 'POST',
@@ -1112,8 +1126,14 @@ async function createTeeTimes(day) {
     body: JSON.stringify({ day })
   });
   teeTimes[day] = await res.json();
+
+  // Clear scoring state if it was for this day
+  if (scoringState && scoringState.day === day) scoringState = null;
+  activeTeeTimeToken = null;
+
   loadAdminView();
-  showToast('4 tee times created');
+  loadLeaderboard(); // Refresh leaderboard immediately
+  showToast(`Day ${day} reset — scores cleared`);
 }
 
 async function togglePlayer(ttId, playerId) {

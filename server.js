@@ -89,10 +89,14 @@ app.get('/api/tee-times/:day', async (req, res) => {
   }
 });
 
-// ─── Create tee times for a day ───────────────────────────────────────────────
+// ─── Create tee times for a day (also wipes scores for that day) ─────────────
 app.post('/api/tee-times', async (req, res) => {
   try {
     const { day } = req.body;
+
+    // Wipe scores for this day
+    await pool.query('DELETE FROM scores WHERE day=$1', [day]);
+
     // Delete existing tee times for this day
     await pool.query('DELETE FROM tee_times WHERE day=$1', [day]);
 
