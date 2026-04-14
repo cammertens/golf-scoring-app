@@ -501,16 +501,14 @@
 
 <!-- SCORE ENTRY VIEW -->
 <div class="view" id="view-score">
-  <div id="score-content">
-    <div class="card">
-      <div style="text-align:center;padding:20px 0;">
-        <div style="font-size:32px;margin-bottom:8px;">⛳</div>
-        <div style="font-weight:600;margin-bottom:4px;">Score Entry</div>
-        <div style="font-size:13px;color:var(--light);">Open your tee time link to enter scores</div>
-      </div>
+  <div id="score-day-toggle" style="display:none;">
+    <div class="day-toggle" style="margin-bottom:8px;">
+      <div class="day-btn active" id="score-day-1" onclick="setScoreDay(1)">Day 1 — Scarecrow</div>
+      <div class="day-btn" id="score-day-2" onclick="setScoreDay(2)">Day 2 — Gamble Sands</div>
     </div>
-    <div id="score-tee-times-list"></div>
+    <div id="score-tt-tabs" style="display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:4px;"></div>
   </div>
+  <div id="score-content"></div>
 </div>
 
 <!-- SCORECARDS VIEW -->
@@ -684,44 +682,72 @@ function renderLeaderboard(teams) {
   document.getElementById('leaderboard-content').innerHTML = html;
 }
 
-// ─── Score entry list (for /score tab without a token) ────────────────────────
+// ─── Score tab state ──────────────────────────────────────────────────────────
+let scoreDay = 1;
+let activeTeeTimeToken = null;
+
 async function loadScoreViewList() {
   if (scoreMatch) return;
-  const el = document.getElementById('score-tee-times-list');
-  el.innerHTML = '<div class="loading-center"><div class="spinner"></div></div>';
 
-  try {
-    let html = '';
-    for (const day of [1, 2]) {
-      const res = await fetch(`/api/tee-times/${day}`);
-      const tts = await res.json();
-      if (tts.length) {
-        const course = allCourses.find(c => c.day === day);
-        html += `<div class="section-title">Day ${day} — ${course ? course.name : ''}</div>`;
-        tts.forEach(tt => {
-          const playerNames = tt.players.map(p => shortName(p.name).split(' ')[0]).join(', ') || 'Not set up yet';
-          html += `
-            <div class="card" style="cursor:pointer;" onclick="openScoringLink('${tt.unique_token}')">
-              <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div>
-                  <div style="font-weight:600;">${tt.label}</div>
-                  <div style="font-size:12px;color:var(--light);margin-top:2px;">${playerNames}</div>
-                </div>
-                <div style="color:var(--green);font-size:20px;">→</div>
-              </div>
-            </div>
-          `;
-        });
-      }
-    }
-    if (!html) html = '<div class="empty-state">No tee times set up yet.<br>Go to Setup to create them.</div>';
-    el.innerHTML = html;
-  } catch(e) {
-    el.innerHTML = '<div class="empty-state">Could not load tee times</div>';
+  // Load all tee times for both days
+  for (const day of [1, 2]) {
+    const res = await fetch(`/api/tee-times/${day}`);
+    teeTimes[day] = await res.json();
   }
+
+  // Show the day toggle
+  document.getElementById('score-day-toggle').style.display = 'block';
+
+  renderScoreTabs();
+}
+
+function setScoreDay(day) {
+  scoreDay = day;
+  activeTeeTimeToken = null;
+  document.getElementById('score-day-1').classList.toggle('active', day === 1);
+  document.getElementById('score-day-2').classList.toggle('active', day === 2);
+  renderScoreTabs();
+}
+
+function renderScoreTabs() {
+  const tts = teeTimes[scoreDay] || [];
+  const tabsEl = document.getElementById('score-tt-tabs');
+  tabsEl.innerHTML = '';
+
+  if (!tts.length) {
+    document.getElementById('score-content').innerHTML = '<div class="empty-state">No tee times set up yet.<br>Go to Setup to create them.</div>';
+    return;
+  }
+
+  // Default to first tee time if none selected
+  if (!activeTeeTimeToken) activeTeeTimeToken = tts[0].unique_token;
+
+  tts.forEach(tt => {
+    const btn = document.createElement('button');
+    const isActive = tt.unique_token === activeTeeTimeToken;
+    btn.style.cssText = `
+      flex-shrink:0; padding:8px 14px; border-radius:20px; border:2px solid;
+      font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;
+      border-color:${isActive ? 'var(--green)' : 'var(--border)'};
+      background:${isActive ? 'var(--green)' : 'white'};
+      color:${isActive ? 'white' : 'var(--light)'};
+    `;
+    const playerFirstNames = tt.players.map(p => p.name.split(' ')[0]).join(', ') || 'Empty';
+    btn.textContent = `TT${tts.indexOf(tt) + 1}: ${playerFirstNames}`;
+    btn.addEventListener('click', () => {
+      activeTeeTimeToken = tt.unique_token;
+      renderScoreTabs();
+      loadScoringView(tt.unique_token);
+    });
+    tabsEl.appendChild(btn);
+  });
+
+  // Load active tee time scoring view
+  loadScoringView(activeTeeTimeToken);
 }
 
 function openScoringLink(token) {
+  // Only used for direct URL navigation now - kept for compatibility
   window.location.href = `/score/${token}`;
 }
 
@@ -734,32 +760,39 @@ async function loadTeeTimes() {
 
 // ─── Scoring view (via token) ─────────────────────────────────────────────────
 async function loadScoringView(token) {
-  document.getElementById('score-content').innerHTML = '<div class="loading-center"><div class="spinner"></div></div>';
+  const el = document.getElementById('score-content');
+  el.innerHTML = '<div class="loading-center"><div class="spinner"></div></div>';
 
   try {
     const res = await fetch(`/api/tee-time/${token}`);
     if (!res.ok) {
-      document.getElementById('score-content').innerHTML = '<div class="card"><div class="empty-state">Tee time not found.<br>Check your link.</div></div>';
+      el.innerHTML = '<div class="card"><div class="empty-state">Tee time not found.</div></div>';
       return;
     }
     const tt = await res.json();
-    scoringState = {
-      teeTime: tt,
-      currentHole: 1,
-      day: tt.day,
-      scores: {}, // { playerId: { holeNumber: { gross, points } } }
-      token
-    };
 
-    // Pre-fill existing scores
-    if (tt.scores) {
-      tt.scores.forEach(s => {
-        if (!scoringState.scores[s.player_id]) scoringState.scores[s.player_id] = {};
-        scoringState.scores[s.player_id][s.hole_number] = {
-          gross: s.gross_strokes,
-          points: s.stableford_points
-        };
-      });
+    // Only reset scoring state if switching to a different tee time
+    if (!scoringState || scoringState.token !== token) {
+      scoringState = {
+        teeTime: tt,
+        currentHole: 1,
+        day: tt.day,
+        scores: {},
+        token
+      };
+      // Pre-fill existing scores
+      if (tt.scores) {
+        tt.scores.forEach(s => {
+          if (!scoringState.scores[s.player_id]) scoringState.scores[s.player_id] = {};
+          scoringState.scores[s.player_id][s.hole_number] = {
+            gross: s.gross_strokes,
+            points: s.stableford_points
+          };
+        });
+      }
+    } else {
+      // Refresh tee time data but keep current hole and scores
+      scoringState.teeTime = tt;
     }
 
     const course = tt.course;
@@ -768,7 +801,7 @@ async function loadScoringView(token) {
 
     renderScoringView();
   } catch (e) {
-    document.getElementById('score-content').innerHTML = '<div class="card"><div class="empty-state">Error loading tee time</div></div>';
+    el.innerHTML = '<div class="card"><div class="empty-state">Error loading tee time</div></div>';
   }
 }
 
