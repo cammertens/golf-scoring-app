@@ -532,6 +532,13 @@
 <script>
 // ─── State ────────────────────────────────────────────────────────────────────
 const BASE = '';
+
+function shortName(fullName) {
+  const parts = fullName.trim().split(' ');
+  if (parts.length === 1) return fullName;
+  return parts[0] + ' ' + parts[parts.length - 1][0] + '.';
+}
+
 let allPlayers = [];
 let allCourses = [];
 let currentView = 'leaderboard';
@@ -663,7 +670,7 @@ function renderLeaderboard(teams) {
       html += `
         <div class="player-row">
           <div class="player-dot ${dotCls}"></div>
-          <div class="player-name">${p.player_name}</div>
+          <div class="player-name">${shortName(p.player_name)}</div>
           <div>
             <div class="player-holes-played">${holeTxt}</div>
           </div>
@@ -692,7 +699,7 @@ async function loadScoreViewList() {
         const course = allCourses.find(c => c.day === day);
         html += `<div class="section-title">Day ${day} — ${course ? course.name : ''}</div>`;
         tts.forEach(tt => {
-          const playerNames = tt.players.map(p => p.name.split(' ')[0]).join(', ') || 'Not set up yet';
+          const playerNames = tt.players.map(p => shortName(p.name).split(' ')[0]).join(', ') || 'Not set up yet';
           html += `
             <div class="card" style="cursor:pointer;" onclick="openScoringLink('${tt.unique_token}')">
               <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -798,7 +805,7 @@ function renderScoringView() {
     playerRows += `
       <div class="score-entry-row">
         <div class="score-player-info">
-          <div class="score-player-name" style="color:${teamColor}">${p.name.split(' ')[0]}</div>
+          <div class="score-player-name" style="color:${teamColor}">${shortName(p.name)}</div>
           <div class="score-player-sub">${playerStrokes} strokes given · +${strokesOnHole} this hole</div>
         </div>
         <div class="score-result">${ptsHtml}</div>
@@ -948,7 +955,7 @@ async function loadCards() {
 
           html += `<div class="card" style="padding:12px;">`;
           html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <div style="font-weight:600;font-size:14px;">${p.player_name}</div>
+            <div style="font-weight:600;font-size:14px;">${shortName(p.player_name)}</div>
             <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--green);">${p.total_points} pts</div>
           </div>`;
 
@@ -1033,7 +1040,7 @@ async function loadAdminView() {
               const isDisabled = !isSelected && assignedPlayerIds.has(p.id);
               return `<button class="player-chip washington ${isSelected?'selected':''}"
                 ${isDisabled?'disabled':''}
-                onclick="togglePlayer(${tt.id}, ${p.id})">${p.name}</button>`;
+                onclick="togglePlayer(${tt.id}, ${p.id})">${shortName(p.name)}</button>`;
             }).join('')}
           </div>
           <div class="section-title">Team Not Washington</div>
@@ -1043,7 +1050,7 @@ async function loadAdminView() {
               const isDisabled = !isSelected && assignedPlayerIds.has(p.id);
               return `<button class="player-chip notwashington ${isSelected?'selected':''}"
                 ${isDisabled?'disabled':''}
-                onclick="togglePlayer(${tt.id}, ${p.id})">${p.name}</button>`;
+                onclick="togglePlayer(${tt.id}, ${p.id})">${shortName(p.name)}</button>`;
             }).join('')}
           </div>
           <div class="link-box" onclick="copyLink('${tt.unique_token}')" id="link-${tt.id}">
